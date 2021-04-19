@@ -1,8 +1,30 @@
-const router = require('express').Router();
+const router = require("express").Router();
+const User = require("./users-model.js");
+const {
+  checkBody,
+  checkUserNameExists,
+  checkDuplicateUserName,
+} = require("../config/middleware.js");
 
-router.post('/register', (req, res) => {
-  res.end('implement register, please!');
-  /*
+const bcryptjs = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const { SECRET } = require("../config/secrets.js");
+
+router.post(
+  "/register",
+  checkBody,
+  checkDuplicateUserName,
+  async (req, res) => {
+    const credentials = req.body;
+    try {
+      const hash = bcryptjs.hashSync(credentials.password, 8);
+      credentials.password = hash;
+      const user = await User.register(credentials);
+      res.status(201).json(user);
+    } catch (err) {
+      next(err);
+    }
+    /*
     IMPLEMENT
     You are welcome to build additional middlewares to help with the endpoint's functionality.
     DO NOT EXCEED 2^8 ROUNDS OF HASHING!
@@ -27,11 +49,15 @@ router.post('/register', (req, res) => {
     4- On FAILED registration due to the `username` being taken,
       the response body should include a string exactly as follows: "username taken".
   */
-});
+  }
+);
 
-router.post('/login', (req, res) => {
-  res.end('implement login, please!');
-  /*
+router.post(
+  "/login",
+  checkBody,
+  checkUserNameExists,
+  async (req, res, next) => {
+    /*
     IMPLEMENT
     You are welcome to build additional middlewares to help with the endpoint's functionality.
 
@@ -54,6 +80,32 @@ router.post('/login', (req, res) => {
     4- On FAILED login due to `username` not existing in the db, or `password` being incorrect,
       the response body should include a string exactly as follows: "invalid credentials".
   */
-});
+    let { username, password } = req.body;
+
+    try {
+      const user = await User.getUserBy({ username }).first();
+      if (user && bcryptjs.compareSync(password, user.password)) {
+        const token = generateToken(user);
+        res.status(200).json({ message: `welcome ${user.username}`, token });
+      } else {
+        res.status(401).json({ message: "invalid credentials" });
+      }
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+function generateToken(user) {
+  const payload = {
+    sub: user.id,
+    username: user.username,
+  };
+  const options = {
+    expiresIn: "1h",
+  };
+  const secret = SECRET;
+  return jwt.sign(payload, secret, options);
+}
 
 module.exports = router;
